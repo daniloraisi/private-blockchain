@@ -64,26 +64,25 @@ class Blockchain {
     let self = this;
     return new Promise(async (resolve, reject) => {
       block.timestamp = new Date().getTime().toString().slice(0, -3);
-      block.height = (await self.getBlockByHeight()) + 1;
+      block.height = (await self.getChainHeight()) + 1;
 
       if (self.chain.length > 0) {
         block.previousBlockHash = (
-          await self.getBlockByHeight(await self.getBlockByHeight())
+          await self.getBlockByHeight(await self.getChainHeight())
         ).hash;
       }
 
-      // Removing hash property to calculate the correct SHA256 hash string
-      const { hash, ...rest } = block;
-      block.hash = SHA256(JSON.stringify(rest)).toString();
+      block.hash = SHA256(JSON.stringify(block)).toString();
 
-      if (block.validate()) {
+      const chainValidation = await self.validateChain();
+      if (chainValidation.length === 0) {
         self.height++;
         self.chain.push(block);
 
         return resolve(block);
       }
 
-      return reject("The block sent is not valid");
+      return reject(chainValidation);
     });
   }
 
@@ -126,29 +125,34 @@ class Blockchain {
   submitStar(address, message, signature, star) {
     let self = this;
     return new Promise(async (resolve, reject) => {
-      let time = parseInt(message.split(":")[1]);
-      let currentTime = parseInt(new Date().getTime().toString().slice(0, -3));
+      try {
+        let time = parseInt(message.split(":")[1]);
+        let currentTime = parseInt(
+          new Date().getTime().toString().slice(0, -3)
+        );
 
-      // Validating if the Star was submitted within 5 minutes
-      if (currentTime - time < 300) {
-        // Validating if the message was signed by the wallet address
-        if (bitcoinMessage.verify(message, address, signature)) {
-          let block = new BlockClass.Block({
-            address,
-            message,
-            signature,
-            star,
-          });
-          await self._addBlock(block);
-          return resolve(block);
+        // Validating if the Star was submitted within 5 minutes
+        if (currentTime - time < 300) {
+          // Validating if the message was signed by the wallet address
+          if (bitcoinMessage.verify(message, address, signature)) {
+            let block = new BlockClass.Block({
+              address,
+              message,
+              signature,
+              star,
+            });
+            return resolve(await self._addBlock(block));
+          }
+
+          return reject("The Message sent is not valid");
         }
 
-        return reject("The Message sent is not valid");
+        return reject(
+          "Time elapsed from request ownership to Star submit is greater than 5 minutes"
+        );
+      } catch (error) {
+        return reject(error);
       }
-
-      return reject(
-        "Time elapsed from request ownership to Star submit is greater than 5 minutes"
-      );
     });
   }
 
@@ -224,9 +228,9 @@ class Blockchain {
     let errorLog = [];
     return new Promise(async (resolve, reject) => {
       self.chain.forEach(async (block, index) => {
-        let error = await block.validate();
+        let valid = await block.validate();
 
-        if (error) {
+        if (!valid) {
           errorLog.push(`There's an error validating block ${block.height}`);
         }
 
@@ -241,6 +245,8 @@ class Blockchain {
           }
         }
       });
+
+      return resolve(errorLog);
     });
   }
 }
