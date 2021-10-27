@@ -209,7 +209,10 @@ class Blockchain {
         const data = p.getBData();
 
         if (data && data.address === address) {
-          stars.push(data.star);
+          stars.push({
+            owner: address,
+            star: data.star,
+          });
         }
       });
 
